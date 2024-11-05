@@ -3,11 +3,13 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Document</title>
+  <title>Beerest</title>
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
   <meta name="description" content="Description">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
+  <link rel="stylesheet" href="custom.css">
+
 </head>
 
 <body>
@@ -19,16 +21,36 @@
       subMaxLevel: 3,
       auto2top: true,
       copyCode: {
-        buttonText: 'Copiar',
-        errorText: 'Erro',
-        successText: 'Copiado!'
+        buttonText: {
+          '/pt-br/': 'Copiar',
+          '/': 'Copy'
+        },
+        errorText: {
+          '/pt-br/': 'Erro',
+          '/': 'Error'
+        },
+        successText: {
+          '/pt-br/': 'Copiado!',
+          '/': 'Copied!'
+        }
+      },
+      loadNavbar: true,
+      loadSidebar: true,
+      fallbackLanguages: ['pt-br'],
+      homepage: 'en/README.md',
+      alias: {
+        '/.*/_navbar.md': '/_navbar.md',
+        '/pt-br/(.*)': 'pt-br/$1',
+        '/en/(.*)': 'en/$1',
+        '/.*/_sidebar.md': '/_sidebar.md'
       }
     }
   </script>
   <!-- Docsify v4 -->
   <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
   <script src="//cdn.jsdelivr.net/npm/docsify-copy-code"></script>
-
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-python.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
 </body>
 
 </html>
