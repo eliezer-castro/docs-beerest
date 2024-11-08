@@ -19,8 +19,11 @@ pip install beerest
 - Suporte completo a JSON Schema validation
 - Validação de tempo de resposta
 - Gerenciamento flexível de headers e query parameters
+- Suporte a múltiplos métodos de autenticação
 - Tratamento robusto de erros
 - Suporte a timeout customizado
+- Contexto de testes para melhor organização
+- Validações customizáveis via predicados
 
 ## 🔧 Uso básico
 
@@ -57,6 +60,10 @@ O objeto `Request` é o ponto de partida para fazer chamadas HTTP.
 | `with_body(data)` | Define o corpo da requisição |
 | `with_query(params)` | Adiciona query parameters |
 | `with_timeout(timeout)` | Define timeout da requisição |
+| `with_basic_auth(username, password)` | Adiciona autenticação básica |
+| `with_digest_auth(username, password)` | Adiciona autenticação digest |
+| `with_bearer_token(token)` | Adiciona autenticação Bearer token |
+| `with_custom_auth(auth)` | Adiciona autenticação customizada |
 | `get()` | Executa requisição GET |
 | `post()` | Executa requisição POST |
 | `put()` | Executa requisição PUT |
@@ -69,6 +76,49 @@ response = self.request \
     .with_query({"active": True}) \
     .get()
 ```
+
+### Autenticação
+
+Beerest suporta múltiplos métodos de autenticação:
+
+```python
+# Basic Auth
+response = self.request \
+    .with_basic_auth("username", "password") \
+    .to("/protected").get()
+
+# Digest Auth
+response = self.request \
+    .with_digest_auth("username", "password") \
+    .to("/protected").get()
+
+# Bearer Token
+response = self.request \
+    .with_bearer_token("your-token") \
+    .to("/protected").get()
+
+# Custom Auth
+class CustomAuth(Authentication):
+    def apply(self, headers: Dict[str, str], auth: Optional[Any]) -> Tuple[Dict[str, str], Optional[Any]]:
+        headers['X-Custom-Auth'] = 'custom-value'
+        return headers, auth
+
+response = self.request \
+    .with_custom_auth(CustomAuth()) \
+    .to("/protected").get()
+```
+
+### Response
+
+O objeto `Response` encapsula a resposta da API e fornece acesso fácil aos dados:
+
+| Atributo | Descrição |
+|----------|-----------|
+| `status_code` | Código de status HTTP |
+| `headers` | Headers da resposta |
+| `json_data` | Dados JSON parseados (se disponível) |
+| `text` | Corpo da resposta como texto |
+| `elapsed_time` | Tempo de resposta em milissegundos |
 
 ### Expect
 
@@ -91,6 +141,12 @@ O objeto `Expect` fornece uma interface fluente para assertions.
 | `is_json()` | Valida se é JSON válido |
 | `has_keys(*keys)` | Valida presença de chaves |
 | `matches_schema(schema)` | Valida contra JSON Schema |
+| `is_not_empty()` | Verifica se valor não é vazio |
+| `is_in(collection)` | Verifica se valor está na coleção |
+| `satisfies(predicate)` | Valida usando predicado customizado |
+| `that(context)` | Define contexto para validações |
+| `has_type(type)` | Valida o tipo do valor |
+| `has_array_items(schema)` | Valida items de um array |
 
 ```python
 Expect(response) \
@@ -99,6 +155,35 @@ Expect(response) \
     .has_length(10) \
     .body("data.users[0].email") \
     .matches(r"^[\w\.-]+@[\w\.-]+\.\w+$")
+```
+
+### Contexto e Validações Agrupadas
+
+O Beerest permite definir contextos para agrupar validações relacionadas:
+
+```python
+Expect(response) \
+    .that("Status e formato") \
+        .status(200) \
+        .is_json() \
+    .that("Dados do usuário") \
+        .body("user.name").equals("John") \
+        .body("user.email").matches(r"^[\w\.-]+@[\w\.-]+\.\w+$") \
+    .that("Métricas") \
+        .time().less_than(1000)
+```
+
+### Validações Customizadas
+
+O método `satisfies` permite criar validações customizadas usando predicados:
+
+```python
+def is_valid_price(price):
+    return isinstance(price, (int, float)) and price > 0
+
+Expect(response) \
+    .body("price") \
+    .satisfies(is_valid_price, "price should be a positive number")
 ```
 
 ## Validação de Schema
@@ -141,6 +226,7 @@ Expect(response) \
 
 ### Formatos suportados
 
+O validador de schema suporta os seguintes formatos:
 - email
 - date-time-iso
 - uuid
@@ -199,6 +285,45 @@ def test_create_post(self):
         .body("id").satisfies(lambda x: isinstance(x, int))
 ```
 
+### Teste com autenticação e contexto
+
+```python
+def test_protected_endpoint(self):
+    response = self.request \
+        .to("/protected") \
+        .with_bearer_token("your-token") \
+        .get()
+        
+    Expect(response) \
+        .that("Autenticação") \
+            .status(200) \
+            .header("Authorization").is_not_empty() \
+        .that("Dados retornados") \
+            .body("data").is_not_empty() \
+            .body("permissions").has_type("array")
+```
+
+### Validação complexa com predicados
+
+```python
+def test_product_data(self):
+    def valid_product(product):
+        return all([
+            isinstance(product.get("id"), int),
+            isinstance(product.get("price"), (int, float)),
+            product.get("price") > 0,
+            isinstance(product.get("stock"), int),
+            product.get("stock") >= 0
+        ])
+    
+    response = self.request.to("/products/1").get()
+    
+    Expect(response) \
+        .status(200) \
+        .body() \
+        .satisfies(valid_product, "product data should be valid")
+```
+
 ### Teste de performance
 
 ```python
@@ -247,6 +372,21 @@ class TestApi(Test):
    - Configure timeouts apropriados
    - Inclua assertions de tempo quando relevante
    - Agrupe testes relacionados para otimizar execução
+
+5. **Autenticação**
+   - Use o método de autenticação mais apropriado para cada caso
+   - Encapsule lógica de autenticação complexa em classes customizadas
+   - Mantenha credenciais sensíveis em variáveis de ambiente
+
+## Tratamento de Erros
+
+Beerest fornece tratamento robusto de erros com mensagens claras:
+
+- Validação de URL inválida
+- Timeout de requisição
+- Erros de schema
+- Falhas de assertion com mensagens detalhadas
+- Problemas de autenticação
 
 ## Contribuindo
 

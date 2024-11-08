@@ -1,10 +1,10 @@
 # Beerest
 
-> An elegant Python library for API testing with fluent interface.
+> An elegant Python library for API testing with a fluent interface.
 
 ## 🚀 Introduction
 
-Beerest is an API testing library that combines simplicity, robustness, and elegance, offering a fluent test writing experience. With Beerest, you can write readable and maintainable tests with ease.
+Beerest is an API testing library that combines simplicity, robustness, and elegance, offering a fluent experience for writing tests. With Beerest, you can write readable and maintainable tests with ease.
 
 ## 📦 Installation
 
@@ -16,11 +16,14 @@ pip install beerest
 
 - Fluent Interface for intuitive test writing
 - Expressive and chainable assertions
-- Full JSON Schema validation support
+- Complete JSON Schema validation support
 - Response time validation
-- Flexible headers and query parameters management
+- Flexible header and query parameter management
+- Multiple authentication methods support
 - Robust error handling
 - Custom timeout support
+- Test context for better organization
+- Custom validations via predicates
 
 ## 🔧 Basic Usage
 
@@ -51,12 +54,16 @@ The `Request` object is the starting point for making HTTP calls.
 #### Main Methods
 
 | Method | Description |
-|--------|-------------|
+|--------|------------|
 | `to(endpoint)` | Sets the request endpoint |
 | `with_headers(headers)` | Adds headers to the request |
 | `with_body(data)` | Sets the request body |
 | `with_query(params)` | Adds query parameters |
 | `with_timeout(timeout)` | Sets request timeout |
+| `with_basic_auth(username, password)` | Adds basic authentication |
+| `with_digest_auth(username, password)` | Adds digest authentication |
+| `with_bearer_token(token)` | Adds Bearer token authentication |
+| `with_custom_auth(auth)` | Adds custom authentication |
 | `get()` | Executes GET request |
 | `post()` | Executes POST request |
 | `put()` | Executes PUT request |
@@ -69,6 +76,49 @@ response = self.request \
     .with_query({"active": True}) \
     .get()
 ```
+
+### Authentication
+
+Beerest supports multiple authentication methods:
+
+```python
+# Basic Auth
+response = self.request \
+    .with_basic_auth("username", "password") \
+    .to("/protected").get()
+
+# Digest Auth
+response = self.request \
+    .with_digest_auth("username", "password") \
+    .to("/protected").get()
+
+# Bearer Token
+response = self.request \
+    .with_bearer_token("your-token") \
+    .to("/protected").get()
+
+# Custom Auth
+class CustomAuth(Authentication):
+    def apply(self, headers: Dict[str, str], auth: Optional[Any]) -> Tuple[Dict[str, str], Optional[Any]]:
+        headers['X-Custom-Auth'] = 'custom-value'
+        return headers, auth
+
+response = self.request \
+    .with_custom_auth(CustomAuth()) \
+    .to("/protected").get()
+```
+
+### Response
+
+The `Response` object encapsulates the API response and provides easy access to data:
+
+| Attribute | Description |
+|-----------|-------------|
+| `status_code` | HTTP status code |
+| `headers` | Response headers |
+| `json_data` | Parsed JSON data (if available) |
+| `text` | Response body as text |
+| `elapsed_time` | Response time in milliseconds |
 
 ### Expect
 
@@ -91,6 +141,12 @@ The `Expect` object provides a fluent interface for assertions.
 | `is_json()` | Validates if JSON is valid |
 | `has_keys(*keys)` | Validates presence of keys |
 | `matches_schema(schema)` | Validates against JSON Schema |
+| `is_not_empty()` | Checks if value is not empty |
+| `is_in(collection)` | Checks if value is in collection |
+| `satisfies(predicate)` | Validates using custom predicate |
+| `that(context)` | Sets context for validations |
+| `has_type(type)` | Validates value type |
+| `has_array_items(schema)` | Validates array items |
 
 ```python
 Expect(response) \
@@ -99,6 +155,35 @@ Expect(response) \
     .has_length(10) \
     .body("data.users[0].email") \
     .matches(r"^[\w\.-]+@[\w\.-]+\.\w+$")
+```
+
+### Context and Grouped Validations
+
+Beerest allows defining contexts to group related validations:
+
+```python
+Expect(response) \
+    .that("Status and format") \
+        .status(200) \
+        .is_json() \
+    .that("User data") \
+        .body("user.name").equals("John") \
+        .body("user.email").matches(r"^[\w\.-]+@[\w\.-]+\.\w+$") \
+    .that("Metrics") \
+        .time().less_than(1000)
+```
+
+### Custom Validations
+
+The `satisfies` method allows creating custom validations using predicates:
+
+```python
+def is_valid_price(price):
+    return isinstance(price, (int, float)) and price > 0
+
+Expect(response) \
+    .body("price") \
+    .satisfies(is_valid_price, "price should be a positive number")
 ```
 
 ## Schema Validation
@@ -141,6 +226,7 @@ Expect(response) \
 
 ### Supported Formats
 
+The schema validator supports the following formats:
 - email
 - date-time-iso
 - uuid
@@ -199,6 +285,45 @@ def test_create_post(self):
         .body("id").satisfies(lambda x: isinstance(x, int))
 ```
 
+### Test with Authentication and Context
+
+```python
+def test_protected_endpoint(self):
+    response = self.request \
+        .to("/protected") \
+        .with_bearer_token("your-token") \
+        .get()
+        
+    Expect(response) \
+        .that("Authentication") \
+            .status(200) \
+            .header("Authorization").is_not_empty() \
+        .that("Returned data") \
+            .body("data").is_not_empty() \
+            .body("permissions").has_type("array")
+```
+
+### Complex Validation with Predicates
+
+```python
+def test_product_data(self):
+    def valid_product(product):
+        return all([
+            isinstance(product.get("id"), int),
+            isinstance(product.get("price"), (int, float)),
+            product.get("price") > 0,
+            isinstance(product.get("stock"), int),
+            product.get("stock") >= 0
+        ])
+    
+    response = self.request.to("/products/1").get()
+    
+    Expect(response) \
+        .status(200) \
+        .body() \
+        .satisfies(valid_product, "product data should be valid")
+```
+
 ### Performance Test
 
 ```python
@@ -248,12 +373,27 @@ class TestApi(Test):
    - Include time assertions when relevant
    - Group related tests to optimize execution
 
+5. **Authentication**
+   - Use the most appropriate authentication method for each case
+   - Encapsulate complex authentication logic in custom classes
+   - Keep sensitive credentials in environment variables
+
+## Error Handling
+
+Beerest provides robust error handling with clear messages:
+
+- Invalid URL validation
+- Request timeout
+- Schema errors
+- Assertion failures with detailed messages
+- Authentication issues
+
 ## Contributing
 
 Contributions are welcome! Please follow these steps:
 
 1. Fork the repository
-2. Create a branch for your feature (`git checkout -b feature/new-feature`)
+2. Create a feature branch (`git checkout -b feature/new-feature`)
 3. Commit your changes (`git commit -m 'Add new feature'`)
 4. Push to the branch (`git push origin feature/new-feature`)
 5. Open a Pull Request
